@@ -1,1 +1,1 @@
-# decentralized-KYC-Validation-Solidity
+# decentralized-KYC-validation-Solidity
