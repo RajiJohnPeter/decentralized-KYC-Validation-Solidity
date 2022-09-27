@@ -1,0 +1,220 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.0;
+
+contract KYCVerification{
+
+    enum BankStatus {Active, Inactive}
+    BankStatus currentStatus;
+    address admin;
+    event BankAdded(string bankName, address bankAdd, bool BankStatus);
+
+    constructor(){
+        admin = msg.sender;
+    }
+    modifier onlyOwner(address _admin){             //Validating the admin user
+        require(admin == _admin, "Its not an admin user");
+        _;
+    }
+    modifier bankStatus(){             //Validating the Bank staus as Active / Inactive
+        require(currentStatus == BankStatus.Active, "Bank status is inactive, so can't add customer details");
+        _;
+    }
+    modifier KYCStatus(string memory _custName ){             //Validating the KYC Status
+        require((keccak256(abi.encodePacked(newCustomer[_custName].KYCStatus)) == keccak256(abi.encodePacked("Pending"))),"KYC updated already");
+        _;
+    }
+
+    //Datatypes for Banks
+    struct addBank{
+        string bankName;
+        address addrBank;
+        bool bankStatus;
+        bool permToAddCust;
+        bool kycPrivilege;
+        uint120 kycCount;
+    }
+    mapping(address => addBank)public newBank;
+
+    //Datatypes for Customers
+    struct newCust{
+        string custName;
+        uint256 custData;
+        string custBank;
+        string KYCStatus;
+    }
+    mapping(string => newCust)public newCustomer;
+
+    //Datatypes for KYC Request
+    struct kycRequest{
+        string custAddr;
+        uint phoneNo;
+    }
+    mapping(string => kycRequest)public KYC;
+
+/*==========================================================================================
+Function Name: addNewBank
+Description: To add a new bank details with some privileges.
+Parameters: Input- Bank Name, Ethereum address & Bank Status(bool)
+============================================================================================*/
+    function addNewBank(
+        string memory _bankName, 
+        address _addrBank, 
+        bool _bankStatus)
+        public{
+            require((keccak256(abi.encodePacked(newBank[msg.sender].bankName)) != keccak256(abi.encodePacked(_bankName))), "Eror: Bank name aleady exists");
+            newBank[msg.sender].bankStatus = _bankStatus;
+            if(newBank[msg.sender].bankStatus == true){
+                currentStatus = BankStatus.Active;
+            }
+            else{
+                currentStatus = BankStatus.Inactive;
+            }          
+            newBank[msg.sender].bankName = _bankName;
+            newBank[msg.sender].addrBank = _addrBank;
+            newBank[msg.sender].permToAddCust = true;
+            newBank[msg.sender].kycPrivilege = true;
+            emit BankAdded(_bankName, _addrBank, _bankStatus);
+    }
+
+/*==========================================================================================
+Function Name: addNewCustomerToBank
+Description: To add a new customer to the bank with KYC status as pending.
+Parameters: Input- Customer Name, Customer Data and Bank Name
+============================================================================================*/
+    function addNewCustomerToBank(
+        string memory _custName, 
+        uint256 _custData, 
+        string memory _custBank) 
+        public bankStatus{
+            require((keccak256(abi.encodePacked(newBank[msg.sender].bankName)) == keccak256(abi.encodePacked(_custBank))), "Error: Bank not added");
+            require(newBank[msg.sender].permToAddCust == true, "Permission denied: to add new customer");
+            newCustomer[_custName].custName = _custName;
+            newCustomer[_custName].custData = _custData;
+            newCustomer[_custName].custBank = _custBank;
+            newCustomer[_custName].KYCStatus = "Pending";
+    }
+
+/*==========================================================================================
+Function Name: checkKYCStatusOfCust
+Description: To validate the KYC status
+Parameters: Input- Customer Name    Output - will be pending or verified
+============================================================================================*/
+    function checkKYCStatusOfCust(string memory _custName) 
+        public view returns(string memory){
+        return(newCustomer[_custName].KYCStatus);
+    }
+
+/*==========================================================================================
+Function Name: addNewCustReqforKYC
+Description: To update the KYC request of the customer & change the status to Verified.
+Parameters: Input- Customer Name, Customer Address & Phone no.
+============================================================================================*/
+    function performKYCRequest(
+        string memory _custName, 
+        string memory _custAddr, 
+        uint256 _phoneNo) 
+        public bankStatus KYCStatus(_custName)
+    {       
+            require(newBank[msg.sender].kycPrivilege == true, "Permission denied: to do KYC for Bank");
+            KYC[_custName].custAddr = _custAddr;
+            KYC[_custName].phoneNo = _phoneNo;
+            newCustomer[_custName].KYCStatus = "Verified";
+            newBank[msg.sender].kycCount++;
+    }
+
+/*==========================================================================================
+Function Name: blockBankFromAddingNewCustomers
+Description: To block bank from adding new customers, only admin can access
+Parameters: Input- Ethereum Admin address
+============================================================================================*/
+    function blockBankFromAddingNewCustomers(address admin)public onlyOwner(admin) bankStatus{
+        if(newBank[msg.sender].permToAddCust == true)
+        {
+            newBank[msg.sender].permToAddCust = false;
+        }
+    }
+
+/*==========================================================================================
+Function Name: allowBankFromAddingNewCustomers
+Description: To allow bank from adding new customer, only admin can access
+Parameters: Input- Ethereum Admin address
+============================================================================================*/
+    function allowBankFromAddingNewCustomers(address admin)public onlyOwner(admin) bankStatus{
+        if(newBank[msg.sender].permToAddCust == false)
+        {
+            newBank[msg.sender].permToAddCust = true;
+        }
+    }
+
+/*==========================================================================================
+Function Name: blockBankFromKYC
+Description: To block bank from doing KYC, only admin can access
+Parameters: Input- Ethereum Admin address
+============================================================================================*/
+    function blockBankFromKYC(address admin)public onlyOwner(admin){
+            if(newBank[msg.sender].kycPrivilege == true){
+                newBank[msg.sender].kycPrivilege = false;
+            }
+    }
+
+/*==========================================================================================
+Function Name: allowbankFromKYC
+Description: To allow bank from doing KYC, only admin can access
+Parameters: Input- Ethereum Admin address
+============================================================================================*/
+    function allowbankFromKYC(address admin)public onlyOwner(admin){
+        if(newBank[msg.sender].kycPrivilege == false){
+            newBank[msg.sender].kycPrivilege = true;
+        }
+    }
+
+/*==========================================================================================
+Function Name: viewCustomerData
+Description: To view the customer details using customer Name
+Parameters: Input- Customer Name
+============================================================================================*/
+    function viewCustomerData(string memory _custName)public view returns(
+        uint256, string memory, string memory, string memory, uint256){
+        return(newCustomer[_custName].custData,
+            newCustomer[_custName].custBank,
+            newCustomer[_custName].KYCStatus,
+            KYC[_custName].custAddr,
+            KYC[_custName].phoneNo);
+    }
+
+   /* function adminOnlyAccess(address _admin, string memory _adminAction)public{
+        if(keccak256(abi.encodePacked(_adminAction)) == keccak256(abi.encodePacked("Block bank from adding new Customer"))){
+            role[_admin].admin = _admin;
+            require(owner == role[_admin].admin, "Its not an admin user");
+            require(currentStatus == BankStatus.Active, "Bank status is inactive, so can't add customer details");
+            if(newBank[msg.sender].permToAddCust == true)
+            {
+                newBank[msg.sender].permToAddCust = false;
+            }
+        }
+        else if(keccak256(abi.encodePacked(_adminAction)) == keccak256(abi.encodePacked("Block bank from KYC"))){
+            role[_admin].admin = _admin;
+            require(owner == role[_admin].admin, "Its not an admin user");
+            if(newBank[msg.sender].kycPrivilege == true){
+                newBank[msg.sender].kycPrivilege = false;
+                //kycVerifyStatus = KYCVerify.KYCFailed;
+            }
+        }
+        else if(keccak256(abi.encodePacked(_adminAction)) == keccak256(abi.encodePacked("Allow bank from adding new Customer"))){
+            role[_admin].admin = _admin;
+            require(owner == role[_admin].admin, "Its not an admin user");
+            require(currentStatus == BankStatus.Active, "Bank status is inactive, so can't add customer details");
+            if(newBank[msg.sender].permToAddCust == false)
+            {
+                newBank[msg.sender].permToAddCust = true;
+            }
+        }
+        else if(keccak256(abi.encodePacked(_adminAction)) == keccak256(abi.encodePacked("Allow bank from KYC"))){
+            role[_admin].admin = _admin;
+            require(owner == role[_admin].admin, "Its not an admin user");
+            if(newBank[msg.sender].kycPrivilege == false){
+                newBank[msg.sender].kycPrivilege = true;
+            }
+        }
+    } */
+}
